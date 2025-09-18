@@ -1,3 +1,5 @@
+#[cfg(feature = "storage-sqlite")]
+use crate::storage::sqlite::actor;
 use std::io;
 use thiserror::Error;
 
@@ -36,11 +38,16 @@ macro_rules! other_error {
 }
 other_error!(io::Error);
 other_error!(serde_json::Error);
+other_error!(uuid::Error);
 
 #[cfg(feature = "storage-sqlite")]
 other_error!(rusqlite::Error);
 #[cfg(feature = "storage-sqlite")]
 other_error!(crate::storage::sqlite::SqliteError);
+#[cfg(feature = "storage-sqlite")]
+other_error!(tokio::sync::oneshot::error::RecvError);
+#[cfg(feature = "storage-sqlite")]
+other_error!(tokio::sync::mpsc::error::SendError<actor::ActorMessage>);
 
 #[cfg(feature = "server-gcp")]
 other_error!(google_cloud_storage::http::Error);
@@ -70,13 +77,26 @@ impl From<ureq::Error> for Error {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl From<indexed_db_futures::error::Error> for Error {
+    fn from(err: indexed_db_futures::error::Error) -> Self {
+        Error::Database(err.to_string())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl From<indexed_db_futures::error::OpenDbError> for Error {
+    fn from(err: indexed_db_futures::error::OpenDbError) -> Self {
+        Error::Database(err.to_string())
+    }
+}
+
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server-sync"))]
 mod test {
     use super::*;
 
-    #[cfg(feature = "server-sync")]
     #[test]
     fn ureq_error_status() {
         let err = ureq::Error::Status(
